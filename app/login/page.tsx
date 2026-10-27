@@ -1,7 +1,9 @@
+
 "use client";
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Eye,
   EyeOff,
@@ -11,39 +13,102 @@ import {
   Github,
   Chrome,
 } from "lucide-react";
+import pb from "@/lib/pocketbase";
 
 export default function AuthPage() {
+  const router = useRouter();
+
   const [mode, setMode] = useState<"login" | "register">("login");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
 
-  // Simple submit handlers (placeholder)
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    // TODO: integrate authentication logic
-    console.log("login");
+    setMessage("");
+
+    const form = new FormData(e.currentTarget);
+    const email = String(form.get("email") ?? "").trim();
+    const password = String(form.get("password") ?? "");
+
+    try {
+      setLoading(true);
+
+      await pb.collection("users").authWithPassword(email, password);
+
+      setMessage("Login berhasil!");
+      router.push("/");
+      router.refresh();
+    } catch (error) {
+      console.error("Login error:", error);
+      setMessage("Login gagal. Periksa email dan kata sandi.");
+    } finally {
+      setLoading(false);
+    }
   };
-  const handleRegister = (e: React.FormEvent) => {
+
+  const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    console.log("register");
+    setMessage("");
+
+    const form = new FormData(e.currentTarget);
+    const name = String(form.get("name") ?? "").trim();
+    const email = String(form.get("email") ?? "").trim();
+    const password = String(form.get("password") ?? "");
+    const confirmPassword = String(form.get("confirmPassword") ?? "");
+
+    if (password !== confirmPassword) {
+      setMessage("Konfirmasi kata sandi tidak cocok.");
+      return;
+    }
+
+    if (password.length < 8) {
+      setMessage("Kata sandi minimal 8 karakter.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      await pb.collection("users").create({
+        name,
+        email,
+        password,
+        passwordConfirm: confirmPassword,
+      });
+
+      await pb.collection("users").authWithPassword(email, password);
+
+      setMessage("Registrasi berhasil!");
+      router.push("/");
+      router.refresh();
+    } catch (error) {
+      console.error("Register error:", error);
+      setMessage(
+        "Registrasi gagal. Periksa email, kata sandi, atau field wajib."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-900">
-      {/* Card with glassmorphism */}
-      <div className="w-full max-w-md space-y-6 rounded-xl border border-white/20 bg-white/10 p-6 backdrop-blur-md shadow-xl">
-        {/* Logo / title */}
+      <div className="w-full max-w-md space-y-6 rounded-xl border border-white/20 bg-white/10 p-6 shadow-xl backdrop-blur-md">
         <div className="flex justify-center text-2xl font-bold text-white">
           <Link href="/" className="hover:underline">
             KomikuApp
           </Link>
         </div>
 
-        {/* Tab toggle */}
         <div className="flex space-x-4">
           <button
             type="button"
-            onClick={() => setMode("login")}
+            onClick={() => {
+              setMode("login");
+              setMessage("");
+            }}
             className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${
               mode === "login"
                 ? "bg-white/30 text-white"
@@ -52,9 +117,13 @@ export default function AuthPage() {
           >
             Login
           </button>
+
           <button
             type="button"
-            onClick={() => setMode("register")}
+            onClick={() => {
+              setMode("register");
+              setMessage("");
+            }}
             className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${
               mode === "register"
                 ? "bg-white/30 text-white"
@@ -65,28 +134,35 @@ export default function AuthPage() {
           </button>
         </div>
 
-        {/* Forms */}
+        {message && (
+          <p role="status" className="text-center text-sm text-white">
+            {message}
+          </p>
+        )}
+
         {mode === "login" ? (
           <form onSubmit={handleLogin} className="space-y-4">
-            {/* Email / Username */}
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
               <input
-                type="text"
-                placeholder="Email atau Username"
+                name="email"
+                type="email"
+                placeholder="Email"
+                autoComplete="email"
                 required
-                className="w-full rounded-md bg-gray-800/50 pl-10 pr-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full rounded-md bg-gray-800/50 py-2 pl-10 pr-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
 
-            {/* Password */}
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
               <input
+                name="password"
                 type={showPassword ? "text" : "password"}
                 placeholder="Kata sandi"
+                autoComplete="current-password"
                 required
-                className="w-full rounded-md bg-gray-800/50 pl-10 pr-10 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full rounded-md bg-gray-800/50 py-2 pl-10 pr-10 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary"
               />
               <button
                 type="button"
@@ -98,7 +174,6 @@ export default function AuthPage() {
               </button>
             </div>
 
-            {/* Remember + Forgot */}
             <div className="flex items-center justify-between text-sm">
               <label className="inline-flex items-center space-x-2 text-gray-300">
                 <input type="checkbox" className="form-checkbox h-4 w-4 rounded text-primary" />
@@ -111,43 +186,48 @@ export default function AuthPage() {
 
             <button
               type="submit"
-              className="w-full rounded-md bg-primary px-4 py-2 text-white hover:bg-primary/90"
+              disabled={loading}
+              className="w-full rounded-md bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:opacity-50"
             >
-              Masuk
+              {loading ? "Memproses..." : "Masuk"}
             </button>
           </form>
         ) : (
           <form onSubmit={handleRegister} className="space-y-4">
-            {/* Full Name / Username */}
             <div className="relative">
               <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
               <input
+                name="name"
                 type="text"
-                placeholder="Nama Lengkap / Username"
+                placeholder="Nama Lengkap"
+                autoComplete="name"
                 required
-                className="w-full rounded-md bg-gray-800/50 pl-10 pr-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full rounded-md bg-gray-800/50 py-2 pl-10 pr-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
 
-            {/* Email */}
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
               <input
+                name="email"
                 type="email"
-                placeholder="E‑mail"
+                placeholder="E-mail"
+                autoComplete="email"
                 required
-                className="w-full rounded-md bg-gray-800/50 pl-10 pr-3 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full rounded-md bg-gray-800/50 py-2 pl-10 pr-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>
 
-            {/* Password */}
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
               <input
+                name="password"
                 type={showPassword ? "text" : "password"}
-                placeholder="Kata sandi"
+                placeholder="Kata sandi (min. 8 karakter)"
+                autoComplete="new-password"
+                minLength={8}
                 required
-                className="w-full rounded-md bg-gray-800/50 pl-10 pr-10 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full rounded-md bg-gray-800/50 py-2 pl-10 pr-10 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary"
               />
               <button
                 type="button"
@@ -159,14 +239,16 @@ export default function AuthPage() {
               </button>
             </div>
 
-            {/* Confirm Password */}
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
               <input
+                name="confirmPassword"
                 type={showConfirm ? "text" : "password"}
                 placeholder="Konfirmasi Kata sandi"
+                autoComplete="new-password"
+                minLength={8}
                 required
-                className="w-full rounded-md bg-gray-800/50 pl-10 pr-10 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full rounded-md bg-gray-800/50 py-2 pl-10 pr-10 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary"
               />
               <button
                 type="button"
@@ -180,20 +262,29 @@ export default function AuthPage() {
 
             <button
               type="submit"
-              className="w-full rounded-md bg-primary px-4 py-2 text-white hover:bg-primary/90"
+              disabled={loading}
+              className="w-full rounded-md bg-primary px-4 py-2 text-white hover:bg-primary/90 disabled:opacity-50"
             >
-              Daftar
+              {loading ? "Memproses..." : "Daftar"}
             </button>
           </form>
         )}
 
-        {/* Social login */}
         <div className="flex flex-col gap-3 pt-4">
-          <button className="flex items-center justify-center gap-2 rounded-md bg-gray-800/60 px-4 py-2 text-gray-200 hover:bg-gray-800/80">
+          <button
+            type="button"
+            onClick={() => setMessage("Login Google belum dikonfigurasi.")}
+            className="flex items-center justify-center gap-2 rounded-md bg-gray-800/60 px-4 py-2 text-gray-200 hover:bg-gray-800/80"
+          >
             <Chrome size={20} />
             <span>Masuk dengan Google</span>
           </button>
-          <button className="flex items-center justify-center gap-2 rounded-md bg-gray-800/60 px-4 py-2 text-gray-200 hover:bg-gray-800/80">
+
+          <button
+            type="button"
+            onClick={() => setMessage("Login GitHub belum dikonfigurasi.")}
+            className="flex items-center justify-center gap-2 rounded-md bg-gray-800/60 px-4 py-2 text-gray-200 hover:bg-gray-800/80"
+          >
             <Github size={20} />
             <span>Masuk dengan GitHub</span>
           </button>

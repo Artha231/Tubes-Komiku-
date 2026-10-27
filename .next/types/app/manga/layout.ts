@@ -1,4 +1,4 @@
-// File: /Users/arthasuratinoyo/tubes komik manpro/komiku-app/app/manga/layout.tsx
+// File: C:\tugas\KOMIK\Tubes-Komiku-\app\manga\layout.tsx
 import * as entry from '../../../../app/manga/layout.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

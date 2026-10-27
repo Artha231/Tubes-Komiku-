@@ -1,10 +1,10 @@
+
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { notFound } from "next/navigation";
-import { useMangaDetail } from "@/hooks/useManga";
+import { useParams, useRouter } from "next/navigation";
 import {
   BookOpen,
   Heart,
@@ -13,25 +13,56 @@ import {
   ChevronRight,
   X,
 } from "lucide-react";
+import pb from "@/lib/pocketbase";
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+type MangaRecord = {
+  id: string;
+  title?: string;
+  cover?: string;
+  type?: string;
+  latestChapter?: number;
+  rating?: number;
+  description?: string;
+  genre?: string[] | string;
+  status?: string;
+};
 
-/** Render ★/☆ from a 0‑10 rating scaled to 5 stars */
+type ChapterRecord = {
+  id: string;
+  manga: string;
+  chapterNumber?: number;
+  title?: string;
+  releaseDate?: string;
+  pages?: string[];
+};
+
 function renderStars(rating: number) {
-  const full = Math.round(rating / 2);
+  const full = Math.max(0, Math.min(5, Math.round(rating / 2)));
   return "★".repeat(full) + "☆".repeat(5 - full);
 }
 
-/** Small auto‑dismiss toast */
+function formatDate(date?: string) {
+  if (!date) return "Tanggal tidak tersedia";
+
+  const parsed = new Date(date);
+  if (Number.isNaN(parsed.getTime())) return date;
+
+  return parsed.toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 function Toast({ message }: { message: string }) {
   return (
-    <div className="fixed bottom-4 right-4 z-50 bg-black/80 text-white px-4 py-2 rounded-lg shadow-xl text-sm animate-pulse">
+    <div className="fixed bottom-4 right-4 z-50 bg-black/80 text-white px-4 py-2 rounded-lg shadow-xl text-sm">
       {message}
     </div>
   );
 }
 
-/** Fullscreen image modal */
 function ImageModal({
   src,
   alt,
@@ -44,77 +75,167 @@ function ImageModal({
   onClose: () => void;
 }) {
   if (!open) return null;
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
       onClick={onClose}
     >
       <button
         onClick={onClose}
+        aria-label="Tutup gambar"
         className="absolute top-4 right-4 text-white/70 hover:text-white"
       >
         <X size={28} />
       </button>
-      <Image
-        src={src}
-        alt={alt}
-        width={500}
-        height={700}
-        className="rounded-lg shadow-2xl max-h-[85vh] object-contain"
-      />
+
+      {src ? (
+        <Image
+          src={src}
+          alt={alt}
+          width={500}
+          height={700}
+          unoptimized
+          className="rounded-lg shadow-2xl max-h-[85vh] w-auto object-contain"
+          onClick={(event) => event.stopPropagation()}
+        />
+      ) : (
+        <p className="text-gray-300">Cover belum tersedia.</p>
+      )}
     </div>
   );
 }
 
-// ─── Page Component ──────────────────────────────────────────────────────────
+export default function MangaDetailPage() {
+  const params = useParams<{ id: string }>();
+  const router = useRouter();
+  const id = String(params.id);
 
-export default function MangaDetailPage({
-  params,
-}: {
-  params: { id: string };
-}) {
-  const { id } = params;
-  const { data, isLoading, isError } = useMangaDetail(id);
-
-  // ── State ──────────────────────────────────────────────────────────────
+  const [manga, setManga] = useState<MangaRecord | null>(null);
+  const [chapters, setChapters] = useState<ChapterRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [isFav, setIsFav] = useState(false);
+  const [favoriteRecordId, setFavoriteRecordId] = useState<string | null>(
+    null
+  );
+  const [favLoading, setFavLoading] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [imgOpen, setImgOpen] = useState(false);
   const [allRead, setAllRead] = useState(false);
 
-  // Load favourite from localStorage
   useEffect(() => {
-    setIsFav(localStorage.getItem(`fav-manga-${id}`) === "true");
+    let active = true;
+
+    async function loadData() {
+      setLoading(true);
+      setLoadError("");
+
+      try {
+        const [mangaRecord, chapterRecords] = await Promise.all([
+          pb.collection("manga").getOne<MangaRecord>(id),
+          pb.collection("chapters").getFullList<ChapterRecord>({
+            filter: `manga = "${id}"`,
+            sort: "chapterNumber",
+          }),
+        ]);
+
+        if (!active) return;
+
+        setManga(mangaRecord);
+        setChapters(chapterRecords);
+      } catch (error) {
+        console.error("Gagal mengambil detail manga:", error);
+
+        if (active) {
+          setLoadError(
+            "Data manga gagal dimuat. Periksa koneksi PocketBase dan aturan akses collection."
+          );
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    void loadData();
+
+    return () => {
+      active = false;
+    };
   }, [id]);
 
-  // ── Guards ─────────────────────────────────────────────────────────────
-  if (isLoading) {
-    return <p className="text-center py-12 text-gray-400">Loading…</p>;
-  }
-  if (isError || !data) {
-    return notFound();
-  }
+  useEffect(() => {
+    let active = true;
 
-  // ── Safe destructuring with defaults ───────────────────────────────────
-  const {
-    title = "Untitled",
-    cover = "",
-    genre = [],
-    status = "Unknown",
-    description = "",
-    chapters = [],
-    rating,
-  } = data;
+    async function loadFavorite() {
+      setIsFav(false);
+      setFavoriteRecordId(null);
 
-  // Make sure genre is always an array (extra guard)
-  const safeGenre = Array.isArray(genre) ? genre : [];
+      const userId = pb.authStore.record?.id;
 
-  // ── Handlers ───────────────────────────────────────────────────────────
-  const toggleFav = () => {
-    const next = !isFav;
-    setIsFav(next);
-    localStorage.setItem(`fav-manga-${id}`, String(next));
-    flash(next ? "Ditambahkan ke Favorit!" : "Dihapus dari Favorit.");
+      if (!pb.authStore.isValid || !userId) return;
+
+      try {
+        const records = await pb.collection("favorites").getFullList({
+          filter: `user = "${userId}" && manga = "${id}"`,
+        });
+
+        if (!active) return;
+
+        if (records.length > 0) {
+          setIsFav(true);
+          setFavoriteRecordId(records[0].id);
+        }
+      } catch (error) {
+        console.error("Gagal memuat favorit:", error);
+      }
+    }
+
+    void loadFavorite();
+
+    return () => {
+      active = false;
+    };
+  }, [id]);
+
+  const flash = (message: string) => {
+    setToastMsg(message);
+    window.setTimeout(() => setToastMsg(null), 2200);
+  };
+
+  const toggleFav = async () => {
+    if (!pb.authStore.isValid || !pb.authStore.record?.id) {
+      router.push("/login");
+      return;
+    }
+
+    if (favLoading) return;
+
+    setFavLoading(true);
+
+    try {
+      if (isFav && favoriteRecordId) {
+        await pb.collection("favorites").delete(favoriteRecordId);
+
+        setIsFav(false);
+        setFavoriteRecordId(null);
+        flash("Dihapus dari Favorit.");
+      } else {
+        const created = await pb.collection("favorites").create({
+          user: pb.authStore.record.id,
+          manga: id,
+        });
+
+        setIsFav(true);
+        setFavoriteRecordId(created.id);
+        flash("Ditambahkan ke Favorit!");
+      }
+    } catch (error) {
+      console.error("Gagal memperbarui favorit:", error);
+      flash("Favorit gagal diperbarui. Periksa aturan akses favorites.");
+    } finally {
+      setFavLoading(false);
+    }
   };
 
   const handleShare = async () => {
@@ -126,15 +247,49 @@ export default function MangaDetailPage({
     }
   };
 
-  const flash = (msg: string) => {
-    setToastMsg(msg);
-    setTimeout(() => setToastMsg(null), 2000);
-  };
+  if (loading) {
+    return (
+      <p className="text-center py-12 text-gray-400">
+        Memuat detail manga…
+      </p>
+    );
+  }
 
-  // ── Render ─────────────────────────────────────────────────────────────
+  if (!manga) {
+    return (
+      <div className="max-w-2xl mx-auto p-6 text-center space-y-3">
+        <p className="text-red-400">
+          {loadError || "Manga tidak ditemukan."}
+        </p>
+        <Link href="/" className="text-blue-400 hover:underline">
+          Kembali ke halaman utama
+        </Link>
+      </div>
+    );
+  }
+
+  const title = manga.title || "Untitled";
+  const cover = manga.cover ? pb.files.getURL(manga, manga.cover) : "";
+
+  const genres = Array.isArray(manga.genre)
+    ? manga.genre
+    : typeof manga.genre === "string" && manga.genre
+      ? [manga.genre]
+      : [];
+
+  const status = manga.status || "Unknown";
+  const description =
+    manga.description || "Belum ada deskripsi untuk manga ini.";
+
+  const rating =
+    typeof manga.rating === "number" ? manga.rating : undefined;
+
+  const orderedChapters = [...chapters].sort(
+    (a, b) => (a.chapterNumber ?? 0) - (b.chapterNumber ?? 0)
+  );
+
   return (
     <div className="max-w-4xl mx-auto space-y-8 p-4">
-      {/* Breadcrumb */}
       <nav className="text-sm text-gray-400 flex items-center gap-1">
         <Link href="/" className="hover:underline hover:text-white">
           Home
@@ -143,74 +298,86 @@ export default function MangaDetailPage({
         <span className="text-gray-200">{title}</span>
       </nav>
 
-      {/* ── Hero: Cover + Info ── */}
       <section className="flex flex-col md:flex-row gap-8 items-start">
-        {/* Cover (click to zoom) */}
         <div
-          className="relative cursor-pointer group flex-shrink-0"
+          className="relative cursor-pointer group flex-shrink-0 w-[200px] min-h-[250px]"
           onClick={() => setImgOpen(true)}
         >
-          <Image
-            src={cover}
-            alt={title}
-            width={250}
-            height={350}
-            className="rounded-xl shadow-lg group-hover:brightness-90 transition"
-          />
+          {cover ? (
+            <Image
+              src={cover}
+              alt={title}
+              width={250}
+              height={350}
+              unoptimized
+              className="rounded-xl shadow-lg group-hover:brightness-90 transition w-full h-auto"
+            />
+          ) : (
+            <div className="rounded-xl bg-gray-800 w-[200px] h-[280px] flex items-center justify-center text-gray-500 text-sm">
+              Cover belum tersedia
+            </div>
+          )}
+
           <div className="absolute bottom-2 right-2 bg-black/60 p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
             <ZoomIn className="w-5 h-5 text-white" />
           </div>
         </div>
 
-        {/* Info panel */}
         <div className="flex-1 space-y-4">
           <h1 className="text-3xl font-bold">{title}</h1>
 
-          {/* Genre badges + status */}
           <div className="flex flex-wrap gap-2">
-            {safeGenre.map((g: string) => (
+            {genres.map((genre) => (
               <span
-                key={g}
+                key={genre}
                 className="bg-blue-600/20 text-blue-400 rounded-full px-3 py-0.5 text-xs font-medium"
               >
-                {g}
+                {genre}
               </span>
             ))}
+
+            {manga.type && (
+              <span className="bg-purple-600/20 text-purple-300 rounded-full px-3 py-0.5 text-xs font-medium">
+                {manga.type}
+              </span>
+            )}
+
             <span className="bg-green-600/20 text-green-400 rounded-full px-3 py-0.5 text-xs font-medium">
               {status}
             </span>
           </div>
 
-          {/* Rating */}
           {rating !== undefined && (
             <div className="flex items-center gap-2 text-yellow-400">
               <span className="text-lg tracking-wider">
                 {renderStars(rating)}
               </span>
-              <span className="text-sm text-gray-300">{rating.toFixed(1)}</span>
+              <span className="text-sm text-gray-300">
+                {rating.toFixed(1)}
+              </span>
             </div>
           )}
 
-          {/* Description */}
-          <p className="text-gray-300 leading-relaxed">{description}</p>
+          <p className="text-gray-300 leading-relaxed whitespace-pre-line">
+            {description}
+          </p>
 
-          {/* Action buttons */}
           <div className="flex flex-wrap gap-3 pt-2">
-            {/* Read chapter 1 */}
-            {chapters.length > 0 && (
+            {orderedChapters.length > 0 && (
               <Link
-                href={`/manga/${id}/${chapters[0].id}`}
+                href={`/manga/${id}/${orderedChapters[0].id}`}
                 className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors"
               >
                 <BookOpen size={18} />
-                Mulai Baca Chapter 1
+                Mulai Baca Chapter{" "}
+                {orderedChapters[0].chapterNumber ?? 1}
               </Link>
             )}
 
-            {/* Favorite */}
             <button
               onClick={toggleFav}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+              disabled={favLoading}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors disabled:opacity-60 ${
                 isFav
                   ? "bg-rose-600 border-rose-600 text-white"
                   : "bg-gray-800 border-gray-700 text-gray-200 hover:bg-gray-700"
@@ -220,10 +387,13 @@ export default function MangaDetailPage({
                 size={16}
                 className={isFav ? "fill-white" : ""}
               />
-              {isFav ? "Favorit" : "Tambah Favorit"}
+              {favLoading
+                ? "Memproses…"
+                : isFav
+                  ? "Favorit"
+                  : "Tambah Favorit"}
             </button>
 
-            {/* Share */}
             <button
               onClick={handleShare}
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700 transition-colors"
@@ -235,12 +405,12 @@ export default function MangaDetailPage({
         </div>
       </section>
 
-      {/* ── Chapter List ── */}
       <section>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-bold">
-            Daftar Chapter ({chapters.length})
+            Daftar Chapter ({orderedChapters.length})
           </h2>
+
           <button
             onClick={() => {
               setAllRead(true);
@@ -258,35 +428,44 @@ export default function MangaDetailPage({
           </p>
         )}
 
-        <ul className="space-y-2">
-          {chapters.map((ch) => (
-            <li
-              key={ch.id}
-              className="flex items-center justify-between p-3 rounded-xl bg-gray-800/50 hover:bg-gray-800 border border-gray-800 hover:border-gray-700 transition-colors"
-            >
-              <Link
-                href={`/manga/${id}/${ch.id}`}
-                className="text-sm text-blue-400 hover:text-blue-300 hover:underline font-medium"
+        {orderedChapters.length === 0 ? (
+          <p className="text-sm text-gray-400 rounded-xl border border-gray-800 bg-gray-800/40 p-4">
+            Belum ada chapter untuk manga ini.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {orderedChapters.map((chapter) => (
+              <li
+                key={chapter.id}
+                className="flex items-center justify-between gap-3 p-3 rounded-xl bg-gray-800/50 hover:bg-gray-800 border border-gray-800 hover:border-gray-700 transition-colors"
               >
-                {ch.title}
-              </Link>
-              <div className="flex items-center gap-3">
-                {/* release date – already a plain string, no hydration issue */}
-                <span className="text-xs text-gray-500">{ch.release}</span>
                 <Link
-                  href={`/manga/${id}/${ch.id}`}
-                  className="bg-blue-600/80 hover:bg-blue-600 text-white px-3 py-1 rounded-lg text-xs flex items-center gap-1 transition-colors"
+                  href={`/manga/${id}/${chapter.id}`}
+                  className="text-sm text-blue-400 hover:text-blue-300 hover:underline font-medium"
                 >
-                  <BookOpen size={12} />
-                  Baca
+                  {chapter.title ||
+                    `Chapter ${chapter.chapterNumber ?? "?"}`}
                 </Link>
-              </div>
-            </li>
-          ))}
-        </ul>
+
+                <div className="flex items-center gap-3 shrink-0">
+                  <span className="text-xs text-gray-500 hidden sm:inline">
+                    {formatDate(chapter.releaseDate)}
+                  </span>
+
+                  <Link
+                    href={`/manga/${id}/${chapter.id}`}
+                    className="bg-blue-600/80 hover:bg-blue-600 text-white px-3 py-1 rounded-lg text-xs flex items-center gap-1 transition-colors"
+                  >
+                    <BookOpen size={12} />
+                    Baca
+                  </Link>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
-      {/* Zoom modal */}
       <ImageModal
         src={cover}
         alt={title}
@@ -294,7 +473,6 @@ export default function MangaDetailPage({
         onClose={() => setImgOpen(false)}
       />
 
-      {/* Toast */}
       {toastMsg && <Toast message={toastMsg} />}
     </div>
   );

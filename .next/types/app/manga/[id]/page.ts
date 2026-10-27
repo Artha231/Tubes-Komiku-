@@ -1,4 +1,4 @@
-// File: /Users/arthasuratinoyo/tubes komik manpro/komiku-app/app/manga/[id]/page.tsx
+// File: C:\tugas\KOMIK\Tubes-Komiku-\app\manga\[id]\page.tsx
 import * as entry from '../../../../../app/manga/[id]/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

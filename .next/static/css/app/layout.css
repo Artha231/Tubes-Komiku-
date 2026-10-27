@@ -565,6 +565,9 @@ video {
 .grid {
   display: grid;
 }
+.hidden {
+  display: none;
+}
 .aspect-\[3\/4\] {
   aspect-ratio: 3/4;
 }
@@ -589,11 +592,17 @@ video {
 .h-full {
   height: 100%;
 }
+.h-\[280px\] {
+  height: 280px;
+}
 .max-h-\[85vh\] {
   max-height: 85vh;
 }
 .min-h-screen {
   min-height: 100vh;
+}
+.min-h-\[250px\] {
+  min-height: 250px;
 }
 .w-3 {
   width: 0.75rem;
@@ -612,6 +621,9 @@ video {
 }
 .w-full {
   width: 100%;
+}
+.w-auto {
+  width: auto;
 }
 .min-w-\[150px\] {
   min-width: 150px;
@@ -641,6 +653,9 @@ video {
   flex: 1 1 0%;
 }
 .flex-shrink-0 {
+  flex-shrink: 0;
+}
+.shrink-0 {
   flex-shrink: 0;
 }
 .-translate-y-1\/2 {
@@ -762,6 +777,9 @@ video {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.whitespace-pre-line {
+  white-space: pre-line;
 }
 .rounded {
   border-radius: 0.25rem;
@@ -900,6 +918,15 @@ video {
 .bg-white\/30 {
   background-color: rgb(255 255 255 / 0.3);
 }
+.bg-gray-900\/70 {
+  background-color: rgb(17 24 39 / 0.7);
+}
+.bg-gray-800\/40 {
+  background-color: rgb(31 41 55 / 0.4);
+}
+.bg-purple-600\/20 {
+  background-color: rgb(147 51 234 / 0.2);
+}
 .bg-gradient-to-t {
   background-image: linear-gradient(to top, var(--tw-gradient-stops));
 }
@@ -957,6 +984,9 @@ video {
 }
 .p-6 {
   padding: 1.5rem;
+}
+.p-8 {
+  padding: 2rem;
 }
 .px-1 {
   padding-left: 0.25rem;
@@ -1151,6 +1181,10 @@ video {
 .text-yellow-400 {
   --tw-text-opacity: 1;
   color: rgb(250 204 21 / var(--tw-text-opacity));
+}
+.text-purple-300 {
+  --tw-text-opacity: 1;
+  color: rgb(216 180 254 / var(--tw-text-opacity));
 }
 .placeholder-gray-400::-moz-placeholder {
   --tw-placeholder-opacity: 1;
@@ -1349,6 +1383,14 @@ html {
   --tw-ring-color: rgb(255 69 0 / var(--tw-ring-opacity));
 }
 
+.disabled\:opacity-50:disabled {
+  opacity: 0.5;
+}
+
+.disabled\:opacity-60:disabled {
+  opacity: 0.6;
+}
+
 .group:hover .group-hover\:scale-105 {
   --tw-scale-x: 1.05;
   --tw-scale-y: 1.05;
@@ -1365,6 +1407,9 @@ html {
 }
 
 @media (min-width: 640px) {
+  .sm\:inline {
+    display: inline;
+  }
   .sm\:grid-cols-3 {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
